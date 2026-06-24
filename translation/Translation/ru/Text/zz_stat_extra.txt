@@ -1,0 +1,32 @@
+// доп. regex статов: двоеточие без пробела (Climbed:70.88) + варианты. ': ?' = 0-1 пробел.
+r:"^Distance Climbed: ?([\d.,:]+) ?Meters$"=Пройдено: $1 м
+r:"^Highest Ascent: ?([\d.,:]+) ?Meters$"=Высший подъём: $1 м
+r:"^Average Ascent Rate: ?([\d.,:]+) ?m/s$"=Сред. скорость подъёма: $1 м/с
+r:"^Average Rate of Ascent: ?([\d.,:]+) ?m/s$"=Сред. скорость подъёма: $1 м/с
+r:"^Fastest Rate of Ascent: ?([\d.,:]+) ?m/s$"=Макс. скорость подъёма: $1 м/с
+r:"^Rate of Ascent: ?([\d.,:]+) ?m/s$"=Скорость подъёма: $1 м/с
+r:"^Ascent Rate: ?([\d.,:]+) ?m/s$"=Скорость подъёма: $1 м/с
+r:"^Total Playtime: ?(.+)$"=Общее время: $1
+r:"^Distance Climbed:$"=Пройдено:
+r:"^Highest Ascent:$"=Высший подъём:
+r:"^Average Ascent Rate:$"=Сред. скорость подъёма:
+r:"^Total Playtime:$"=Общее время:
+r:"^Distance: ?([\d.,:]+) ?Meters$"=Дистанция: $1 м
+r:"^Climb Speed: ?([\d.,:]+)$"=Скорость лазания: $1
+r:"^Climbing Speed: ?([\d.,:]+)$"=Скорость лазания: $1
+r:"^High Score: ?([\d.,:]+)$"=Рекорд: $1
+r:"^Climb Distance: ?([\d.,:]+) ?M?e?t?e?r?s?$"=Дистанция лазания: $1
+r:"^Average Travel Speed: ?([\d.,:]+) ?m/s$"=Сред. скорость: $1 м/с
+r:"^Hands \(([\d]+)/([\d]+)\)$"=Руки ($1/$2)
+r:"^Progress: ?([\d]+)/([\d]+) Eaten$"=Прогресс: $1/$2 съедено
+r:"^Challenges \((\d+)/(\d+)\)$"=Испытания ($1/$2)
+r:"^Perks \((\d+)/(\d+)\)$"=Перки ($1/$2)
+r:"^Regions \((\d+)/(\d+)\)$"=Регионы ($1/$2)
+r:"^Items \((\d+)/(\d+)\)$"=Предметы ($1/$2)
+r:"^Rope Placed: ?([\d.,:]+)$"=Размещено верёвок: $1
+r:"^Total Items Used: ?([\d.,:]+)$"=Всего предметов: $1
+r:"^Cost:(\d+) Bank:(\d+)$"=Цена:$1 Банк:$2
+r:"^Death Height: ?(-?[\d.,:]+) ?Meters$"=Высота смерти: $1 м
+r:"^<color\=grey>SCORE: ?([\d.,:]+).*$"=<color\=grey>СЧЁТ: $1
+r:"^<color\=red><size\=24>Score: ([\d.,]+)</size></color>\n<color\=yellow>Distance: ([\d.,]+)m</color>\nRun Playtime: (.+)\nSpeed: ([\d.,]+)m/s\nCompleted At: (.+)$"=<color\=red><size\=24>Счёт: $1</size></color>\n<color\=yellow>Дистанция: $2 м</color>\nВремя забега: $3\nСкорость: $4 м/с\nЗавершено: $5
+r:"^Roaches Smashed <color\=grey>\((\d+)\)</color>: (\d+)\nWon <color\=grey>\((\d+)\)</color>: (\d+)x$"=Раздавлено тараканов <color\=grey>($1)</color>: $2\nПобеды <color\=grey>($3)</color>: $4x

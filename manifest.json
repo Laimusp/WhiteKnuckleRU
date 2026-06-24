@@ -1,0 +1,9 @@
+{
+  "name": "WhiteKnuckleRU",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/Laimusp/WhiteKnuckleRU",
+  "description": "Unofficial Russian fan translation for White Knuckle (XUnity.AutoTranslator-based)",
+  "dependencies": [
+    "BepInEx-BepInExPack-5.4.2305"
+  ]
+}

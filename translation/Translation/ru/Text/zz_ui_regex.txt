@@ -1,0 +1,5 @@
+// UI-шаблоны, где захват = ТОЛЬКО число (безопасно, ничего англ. не остаётся). Точный ключ приоритетнее regex.
+r:"^Page (\d+)/(\d+)$"=Страница $1/$2
+r:"^<color\=red>Cost: ?(\d+)</color>$"=<color\=red>Цена: $1</color>
+r:"^Cost: ?(\d+)$"=Цена: $1
+r:"^<color\=yellow>Player Experience: ?(\d[\d.,]*)</color>$"=<color\=yellow>Опыт игрока: $1</color>

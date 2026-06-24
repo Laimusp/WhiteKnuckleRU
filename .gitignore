@@ -1,0 +1,6 @@
+build/
+dist/
+*.bak
+*.user
+obj/
+bin/

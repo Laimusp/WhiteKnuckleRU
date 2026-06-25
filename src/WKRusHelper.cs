@@ -22,7 +22,7 @@ namespace WKRusHelper
     // имя-независимо), а XUAT — нет. Решение: ПОСЛЕ инициализации XUAT (BepInDependency -> грузимся после него)
     // указываем ему директорию переводов = НАША папка и дёргаем reload. Если XUAT уже смотрит туда
     // (ручная установка / каталог, где имя совпало) — ничего не делаем (без лишнего reload/мигания).
-    [BepInPlugin("wk.rus.helper", "WK Rus Helper", "1.4.0")]
+    [BepInPlugin("wk.rus.helper", "WK Rus Helper", "1.5.0")]
     [BepInDependency("gravydevsupreme.xunity.autotranslator", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -40,7 +40,7 @@ namespace WKRusHelper
             catch (Exception e) { Logger.LogError("[WKRus] font coroutine start failed: " + e.Message); }
             try { StartCoroutine(FixXuatTranslationDir()); }
             catch (Exception e) { Logger.LogError("[WKRus] xuat-path coroutine start failed: " + e.Message); }
-            Logger.LogInfo("[WKRus] v1.4 loaded (autosize + portable font + portable XUAT dict path)");
+            Logger.LogInfo("[WKRus] v1.5 loaded (autosize+popup + portable font + portable XUAT dict path)");
         }
 
         // ---- (2) ПОРТАТИВНЫЙ ШРИФТ ----
@@ -220,23 +220,81 @@ namespace WKRusHelper
         }
     }
 
-    // авто-уменьшение шрифта ТОЛЬКО для коротких экранных UI-меток.
-    [HarmonyPatch(typeof(TMP_Text), "set_text", new Type[] { typeof(string) })]
-    static class AutoSize
+    // авто-уменьшение шрифта: короткие экранные метки + переполняющиеся попапы-сообщения
+    // (русский длиннее англ -> наезжает в окошках фикс-размера). Применяется и на set_text (свойство),
+    // и на SetText(...) (метод) — текст ОС/сообщений часто ставится методом, мимо set_text. 3D НЕ трогаем.
+    internal static class AutoSizeCore
     {
-        static void Postfix(TMP_Text __instance)
+        // УЗКИЕ хинты: широкие (window/save/computer/os_) давали ложные срабатывания (pos_x, SaveIcon, composite...)
+        static readonly string[] POPUP_HINTS = { "message", "popup", "dialog", "notification", "messagebox" };
+
+        internal static void Apply(TMP_Text inst)
         {
-            if (__instance == null || __instance.enableAutoSizing) return;
-            if (__instance is TextMeshPro) return;
-            Canvas cv = __instance.canvas;
-            if (cv == null || cv.renderMode == RenderMode.WorldSpace) return;
-            string t = __instance.text;
-            if (string.IsNullOrEmpty(t) || t.Length > 40 || t.Contains("<size")) return;
-            float cur = __instance.fontSize;
-            if (cur <= 0f) cur = 36f;
-            __instance.enableAutoSizing = true;
-            __instance.fontSizeMax = cur;
-            __instance.fontSizeMin = Mathf.Max(8f, cur * 0.5f);
+            try
+            {
+                if (inst == null || inst.enableAutoSizing) return;
+                if (inst is TextMeshPro) return;                               // 3D world НЕ трогаем
+                Canvas cv = inst.canvas;
+                if (cv == null || cv.renderMode == RenderMode.WorldSpace) return;
+                string t = inst.text;
+                if (string.IsNullOrEmpty(t) || t.Contains("<size")) return;
+                bool longText = t.Length > 40;
+
+                if (longText && IsPopup(inst))
+                {
+                    // длинный текст в попапе-сообщении: автосайз вниз + перенос, чтоб влез и не наезжал
+                    float c = inst.fontSize; if (c <= 0f) c = 36f;
+                    inst.enableWordWrapping = true;
+                    inst.enableAutoSizing = true;
+                    inst.fontSizeMax = c;
+                    inst.fontSizeMin = Mathf.Max(10f, c * 0.55f);
+                    return;
+                }
+                if (longText) return;                                          // длинный не-попап (нарратив) -> не трогаем
+
+                float cur = inst.fontSize; if (cur <= 0f) cur = 36f;          // короткая экранная метка
+                inst.enableAutoSizing = true;
+                inst.fontSizeMax = cur;
+                inst.fontSizeMin = Mathf.Max(8f, cur * 0.5f);
+            }
+            catch { }
         }
+
+        static bool IsPopup(TMP_Text tmp)
+        {
+            try
+            {
+                Transform tr = tmp.transform;
+                for (int depth = 0; tr != null && depth < 8; depth++, tr = tr.parent)
+                {
+                    string n = tr.name.ToLowerInvariant();
+                    for (int i = 0; i < POPUP_HINTS.Length; i++)
+                        if (n.IndexOf(POPUP_HINTS[i], StringComparison.Ordinal) >= 0) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(TMP_Text), "set_text", new Type[] { typeof(string) })]
+    static class AutoSize_SetTextProp
+    {
+        static void Postfix(TMP_Text __instance) { AutoSizeCore.Apply(__instance); }
+    }
+
+    [HarmonyPatch]
+    static class AutoSize_SetTextMethod
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            foreach (var m in typeof(TMP_Text).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (m.Name != "SetText") continue;
+                var ps = m.GetParameters();
+                if (ps.Length >= 1 && ps[0].ParameterType == typeof(string)) yield return m;
+            }
+        }
+        static void Postfix(TMP_Text __instance) { AutoSizeCore.Apply(__instance); }
     }
 }

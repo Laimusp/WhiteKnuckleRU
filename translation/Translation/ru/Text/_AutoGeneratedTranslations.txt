@@ -5822,3 +5822,10 @@ Sirens just started going off. Got a warning on the radio - <i>'Emergency Class-
 \nResearch Record [07/22/2015]\nDr. Zhang - SB17-A\n\n\nBeen here.. Two months now? This place is bad.. I feel watched, drained.\n\n\nIt was never supposed to go on this long.. Four people, gone.\nSimon said he's going to recall me, I was starting to get worried this ladder would never let me leave.=\nИсследовательская запись [07/22/2015]\nД-р Чжан — SB17-A\n\n\nЯ здесь уже.. два месяца? Это место — кошмар.. чувствую, что за мной следят, что меня выпивают.\n\n\nВсё не должно было затянуться так надолго.. Четверо людей, пропали.\nСаймон сказал, что отзовёт меня. Я уже начал бояться, что эта лестница никогда не даст мне уйти.
 \nresEerch reCor [LL/AA/DDER]\ndr - sb11111111111111\n\n\nladder climb ladder climb ladder climb\n    ladder ladder ladder\n\nladder good climb ladder laaddderrrrr=\nисслЕдов запиС [LL/AA/DDER]\ndr - sb11111111111111\n\n\nлестница лезь лестница лезь лестница лезь\n    лестница лестница лестница\n\nлестница хорошо лезь лестница лееессстттница
 \nresEerch reCor [LL/AA/DDER]\ndr - sb11111111111111\n\nup up up\n      up up up\nkeep going up up up\n\nup!=\nисслЕдов запиС [LL/AA/DDER]\ndr - sb11111111111111\n\nвверх вверх вверх\n      вверх вверх вверх\nпродолжай вверх вверх вверх\n\nвверх!
+DELIVERY RECEIPT:=НАКЛАДНАЯ:
+Retrofitted Equipment Vendor=Переоборудованный торговый автомат
+Condition:=Состояние:
+Acceptable, Minor Wear=приемлемое, незначительный износ
+Notes:=Заметки:
+Unbalanced Grinding Disk=Разбалансированный шлифовальный диск
+Cracked Intake Vat=Треснувший приёмный бак

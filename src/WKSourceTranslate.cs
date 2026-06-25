@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using TMPro;
 using UnityEngine;
 
 // Перевод НА ИСТОЧНИКЕ: переводим голые поля Trinket/Perk (title/description/flavorText/unlockHint)
@@ -14,7 +15,7 @@ using UnityEngine;
 // и старый полный XUAT-ключ доперекрывает собранную англ-строку целиком (нет смеси рус+англ).
 namespace WKSourceTranslate
 {
-    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.1")]
+    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.2")]
     public class Plugin : BaseUnityPlugin
     {
         internal static Dictionary<string, string> Map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -27,7 +28,7 @@ namespace WKSourceTranslate
             catch (Exception e) { Logger.LogError("[WKSrc] dict load failed: " + e); }
             try { new Harmony("wk.source.translate").PatchAll(); }
             catch (Exception e) { Logger.LogError("[WKSrc] patch failed: " + e); }
-            Logger.LogInfo("[WKSrc] source-translate v1.0 loaded, dict=" + Map.Count);
+            Logger.LogInfo("[WKSrc] source-translate v1.0.2 loaded, dict=" + Map.Count);
         }
 
         internal static readonly Regex CYR = new Regex("[А-Яа-яЁё]", RegexOptions.Compiled);
@@ -53,7 +54,17 @@ namespace WKSourceTranslate
             string path = ResolveDictPath();
             if (!File.Exists(path)) { Logger.LogWarning("[WKSrc] dict not found: " + path); return; }
             Logger.LogInfo("[WKSrc] dict: " + path);
-            foreach (string raw in File.ReadAllLines(path))
+            string[] rawLines;
+            // FileShare.ReadWrite — XUAT может держать/писать файл в фоне, не падаем на IOException
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs))
+            {
+                var acc = new List<string>();
+                string line;
+                while ((line = sr.ReadLine()) != null) acc.Add(line);
+                rawLines = acc.ToArray();
+            }
+            foreach (string raw in rawLines)
             {
                 string ln = raw;
                 if (string.IsNullOrEmpty(ln) || ln.StartsWith("//") || ln.StartsWith("r:") || ln.StartsWith("sr:")) continue;
@@ -105,6 +116,87 @@ namespace WKSourceTranslate
             while ((i = s.IndexOf(sub, i, StringComparison.Ordinal)) >= 0) { n++; i += sub.Length; }
             return n;
         }
+
+        // ============ P1/P2: текст В ОБХОД XUAT (ОС-лейблы exact-match + процедурные накладные) ============
+
+        // exact-match из словаря -> иначе попытка как накладной -> иначе оригинал
+        internal static string TranslateAny(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            string ru;
+            if (Map.TryGetValue(s, out ru) && TokenSafe(s, ru)) return ru;
+            if (s.IndexOf("DELIVERY RECEIPT", StringComparison.Ordinal) >= 0) return ReceiptT(s);
+            return s;
+        }
+
+        static readonly Regex RDATE = new Regex(@"^\s*\[\s*\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}\s*\]\s*$", RegexOptions.Compiled);
+
+        // Накладная — фикс-записка: переводим ПОСТРОЧНО, дату/числовые строки пропускаем, неизвестные строки
+        // оставляем как есть (частичный перевод). Смесь тут не страшна: для накладных нет полной XUAT-страховки.
+        static string ReceiptT(string s)
+        {
+            try
+            {
+                string txt = s.IndexOf('\r') >= 0 ? s.Replace("\r", "") : s;
+                string[] lines = txt.Split('\n');
+                bool any = false;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string ln = lines[i];
+                    if (ln.Trim().Length == 0 || RDATE.IsMatch(ln)) continue;     // пусто/дата -> насквозь
+                    string r = LineT(ln);
+                    if (r != null && !string.Equals(r, ln, StringComparison.Ordinal)) { lines[i] = r; any = true; }
+                    // r == null (нет в словаре) -> строку не трогаем
+                }
+                return any ? string.Join("\n", lines) : s;
+            }
+            catch { return s; }
+        }
+
+        // строка накладной с сохранением отступа и маркера "- "; null = не нашли в словаре
+        static string LineT(string ln)
+        {
+            int a = 0; while (a < ln.Length && (ln[a] == ' ' || ln[a] == '\t')) a++;
+            string lead = ln.Substring(0, a);
+            string rest = ln.Substring(a);
+            string bullet = "";
+            if (rest.StartsWith("- ", StringComparison.Ordinal)) { bullet = "- "; rest = rest.Substring(2); }
+            string core = rest.TrimEnd();
+            string tail = rest.Substring(core.Length);
+            int colon = core.IndexOf(": ", StringComparison.Ordinal);
+            if (colon > 0)                                          // "Label: value" -> метка + значение раздельно
+            {
+                string label = core.Substring(0, colon + 1);
+                string val = core.Substring(colon + 2);
+                string lru, vru;
+                if (Map.TryGetValue(label, out lru) && TryVal(val, out vru))
+                    return lead + bullet + lru + " " + vru + tail;
+                return null;
+            }
+            string cru;
+            if (Map.TryGetValue(core, out cru)) return lead + bullet + cru + tail;
+            return null;
+        }
+
+        // значение "Acceptable, Minor Wear" — целиком ИЛИ по запятым
+        static bool TryVal(string val, out string ru)
+        {
+            if (Map.TryGetValue(val, out ru)) return true;
+            if (val.IndexOf(", ", StringComparison.Ordinal) >= 0)
+            {
+                string[] parts = val.Split(new string[] { ", " }, StringSplitOptions.None);
+                string[] outp = new string[parts.Length];
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string p;
+                    if (!Map.TryGetValue(parts[i], out p)) { ru = null; return false; }
+                    outp[i] = p;
+                }
+                ru = string.Join(", ", outp); return true;
+            }
+            ru = null; return false;
+        }
+
     }
 
     // идемпотентный кэш по instanceID — переводим объект один раз
@@ -210,6 +302,34 @@ namespace WKSourceTranslate
             s = s.Replace("<color=grey>Locked Binding: </color>", "<color=grey>Закрытая привязка: </color>");
             s = s.Replace("Unlock Requirement: ", "Требование: ");
             return s;
+        }
+    }
+
+    // ---- P1/P2: ловим текст через TMP_Text.SetText(string,...) — XUAT этот путь не цепляет
+    // (потому ОС-лейблы и не попадали в дамп .text-сеттера). Exact-match -> мгновенно, без мигания скана. ----
+    [HarmonyPatch]
+    static class TMP_SetText_Hook
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            foreach (var m in typeof(TMP_Text).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (m.Name != "SetText") continue;
+                var ps = m.GetParameters();
+                if (ps.Length >= 1 && ps[0].ParameterType == typeof(string)) yield return m;
+            }
+        }
+        // ref string __0 (а не object[] __args) — без boxing/аллокаций на горячих SetText-вызовах
+        static void Prefix(ref string __0)
+        {
+            try
+            {
+                string s = __0;
+                if (string.IsNullOrEmpty(s)) return;
+                string ru = Plugin.TranslateAny(s);
+                if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) __0 = ru;
+            }
+            catch { }
         }
     }
 }

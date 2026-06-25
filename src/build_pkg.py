@@ -6,11 +6,12 @@ for s in (sys.stdout, sys.stderr):
 # ---------- параметры ----------
 AUTHOR = "Laimusp"
 MOD    = "WhiteKnuckleRU"
-VER    = "1.0.0"
+VER    = "1.0.1"
 SUB    = AUTHOR + "-" + MOD            # папка плагина: Laimusp-WhiteKnuckleRU
 WEB    = "https://github.com/%s/%s" % (AUTHOR, MOD)
 
-GAME = "C:/Program Files (x86)/Steam/steamapps/common/White Knuckle"
+# исходник BepInEx/XUAT/шрифтов/загрузчика: рабочий стек перенесён в бэкап после чистки папки игры
+GAME = "C:/Users/user/WhiteKnuckleRU_devbak"
 SC   = "C:/Users/user/AppData/Local/Temp/claude/C--Users-user/2a4bdbf6-80cd-46b4-b6f6-327dd24fa9f5/scratchpad"
 BUILD = SC + "/build"
 DIST  = BUILD + "/dist"
@@ -203,6 +204,7 @@ CHANGELOG = open(SC + "/CHANGELOG_RU.md", "r", encoding="utf-8").read()
 LICENSE = open(SC + "/LICENSE_RU.txt", "r", encoding="utf-8").read()
 write_text(T + "/README.md", README)
 write_text(T + "/CHANGELOG.md", CHANGELOG)
+write_text(T + "/LICENSE", LICENSE)
 
 # ---- zip оба ----
 z_manual = zipdir(M, DIST + "/%s-%s-manual.zip" % (MOD, VER))

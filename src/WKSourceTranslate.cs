@@ -14,7 +14,7 @@ using UnityEngine;
 // и старый полный XUAT-ключ доперекрывает собранную англ-строку целиком (нет смеси рус+англ).
 namespace WKSourceTranslate
 {
-    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.0")]
+    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.1")]
     public class Plugin : BaseUnityPlugin
     {
         internal static Dictionary<string, string> Map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -30,7 +30,7 @@ namespace WKSourceTranslate
             Logger.LogInfo("[WKSrc] source-translate v1.0 loaded, dict=" + Map.Count);
         }
 
-        static readonly Regex CYR = new Regex("[А-Яа-яЁё]", RegexOptions.Compiled);
+        internal static readonly Regex CYR = new Regex("[А-Яа-яЁё]", RegexOptions.Compiled);
 
         // dict рядом с DLL (упакованная manager-safe раскладка) -> иначе dev/legacy путь в BepInEx\Translation
         static string ResolveDictPath()
@@ -168,9 +168,10 @@ namespace WKSourceTranslate
                 string nt = Plugin.T(t.title), nd = Plugin.T(t.description), nf = Plugin.T(t.flavorText);
                 bool ok = Hit(t.title, nt) && Hit(t.description, nd) && Hit(t.flavorText, nf);
                 if (ok) { t.title = nt; t.description = nd; t.flavorText = nf; }
-                // unlockHint независим (для GetLockedDescription)
+                // unlockHint переводим ТОЛЬКО при ok (объект переведён целиком), иначе locked-описание
+                // соберётся смесью (англ тело + рус подсказка), и XUAT её по полному англ-ключу не доперекроет.
                 var pu = t.progressionUnlock;
-                if (pu != null && Cache.First(pu.GetInstanceID()))
+                if (pu != null && ok && Cache.First(pu.GetInstanceID()))
                 {
                     string nh = Plugin.T(pu.unlockHint);
                     if (Hit(pu.unlockHint, nh)) pu.unlockHint = nh;
@@ -200,7 +201,9 @@ namespace WKSourceTranslate
         // литералы-метки, которые игра вшивает в сборку (не поля) -> чиним точечной заменой
         internal static string FixLabels(string s)
         {
-            if (string.IsNullOrEmpty(s)) return s;
+            // ГЕЙТ: нет кириллицы -> тело объекта НЕ переведено (ok=false). Метки НЕ русифицируем,
+            // иначе выйдет смесь (англ тело + рус метки), которую XUAT по полному англ-ключу не доперекроет.
+            if (string.IsNullOrEmpty(s) || !Plugin.CYR.IsMatch(s)) return s;
             s = s.Replace("<color=grey>Trinket:</color>", "<color=grey>Тринкет:</color>");
             s = s.Replace("<color=grey>Binding:</color>", "<color=grey>Привязка:</color>");
             s = s.Replace("<color=grey>Locked Trinket: </color>", "<color=grey>Закрытый тринкет: </color>");

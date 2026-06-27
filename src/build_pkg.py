@@ -6,7 +6,7 @@ for s in (sys.stdout, sys.stderr):
 # ---------- параметры ----------
 AUTHOR = "Laimusp"
 MOD    = "WhiteKnuckleRU"
-VER    = "1.0.2"
+VER    = "1.0.4"
 SUB    = AUTHOR + "-" + MOD            # папка плагина: Laimusp-WhiteKnuckleRU
 WEB    = "https://github.com/%s/%s" % (AUTHOR, MOD)
 
@@ -173,6 +173,8 @@ copy_xuat(Mplug)
 Mmod = ensure(Mplug + "/" + SUB)
 shutil.copy2(SC + "/WKSourceTranslate.dll", Mmod + "/WKSourceTranslate.dll")
 shutil.copy2(SC + "/WKRusHelper.dll", Mmod + "/WKRusHelper.dll")
+shutil.copy2(SC + "/pixcyr_atlas.png", Mmod + "/pixcyr_atlas.png")     # крисп-атлас пиксель-шрифта ОС-подписей
+shutil.copy2(SC + "/pixcyr.meta", Mmod + "/pixcyr.meta")
 put_translation(Mmod + "/Translation/ru/Text", dict_body)
 
 # ---- (T) THUNDERSTORE: override-папки в корне zip ----
@@ -180,6 +182,8 @@ T = ensure(BUILD + "/thunderstore")
 Tplug = ensure(T + "/plugins")           # -> BepInEx/plugins/Laimusp-WhiteKnuckleRU/
 shutil.copy2(SC + "/WKSourceTranslate.dll", Tplug + "/WKSourceTranslate.dll")
 shutil.copy2(SC + "/WKRusHelper.dll", Tplug + "/WKRusHelper.dll")
+shutil.copy2(SC + "/pixcyr_atlas.png", Tplug + "/pixcyr_atlas.png")    # крисп-атлас пиксель-шрифта ОС-подписей
+shutil.copy2(SC + "/pixcyr.meta", Tplug + "/pixcyr.meta")
 shutil.copy2(GROOT + "/oswald_ru_sdf", Tplug + "/oswald_ru_sdf")       # шрифт рядом с плагином -> грузим сами
 shutil.copy2(GCORE + "/XUnity.Common.dll", Tplug + "/XUnity.Common.dll")  # co-located, не в core/
 copy_xuat(Tplug)
@@ -216,6 +220,9 @@ ensure(R + "/src"); ensure(R + "/translation/Translation/ru/Text")
 shutil.copy2(SC + "/WKSourceTranslate.cs", R + "/src/WKSourceTranslate.cs")
 shutil.copy2(SC + "/WKRusHelper.cs", R + "/src/WKRusHelper.cs")
 shutil.copy2(SC + "/build_pkg.py", R + "/src/build_pkg.py")
+shutil.copy2(SC + "/gen_atlas.py", R + "/src/gen_atlas.py")            # генератор пиксель-атласа (воспроизводимость)
+shutil.copy2(SC + "/pixcyr_atlas.png", R + "/src/pixcyr_atlas.png")
+shutil.copy2(SC + "/pixcyr.meta", R + "/src/pixcyr.meta")
 write_text(R + "/translation/AutoTranslatorConfig.ini", cfg_text)
 shutil.copy2(GROOT + "/oswald_ru_sdf", R + "/translation/oswald_ru_sdf")
 put_translation(R + "/translation/Translation/ru/Text", dict_body)
@@ -254,6 +261,8 @@ for z, tag in ((DIST+"/%s-%s-manual.zip"%(MOD,VER),"manual"), (DIST+"/%s-%s-thun
     check(any(n.endswith(SUB+"/Translation/ru/Text/"+DICT) or n.endswith("Translation/ru/Text/"+DICT) for n in names), "%s: словарь на месте" % tag)
     check(any("WKSourceTranslate.dll" in n for n in names), "%s: WKSourceTranslate.dll" % tag)
     check(any("WKRusHelper.dll" in n for n in names), "%s: WKRusHelper.dll" % tag)
+    check(any("pixcyr_atlas.png" in n for n in names), "%s: атлас пиксель-шрифта" % tag)
+    check(any("pixcyr.meta" in n for n in names), "%s: мета пиксель-шрифта" % tag)
     check(any("oswald_ru_sdf" in n for n in names), "%s: шрифт" % tag)
 # thunderstore root: manifest/icon/readme в корне
 tnames = zipfile.ZipFile(DIST+"/%s-%s-thunderstore.zip"%(MOD,VER)).namelist()

@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 // Перевод НА ИСТОЧНИКЕ: переводим голые поля Trinket/Perk (title/description/flavorText/unlockHint)
 // ДО того как игра соберёт финальную строку с <shimmer>/числами. Тогда комбинаторика форм исчезает.
@@ -15,7 +17,7 @@ using UnityEngine;
 // и старый полный XUAT-ключ доперекрывает собранную англ-строку целиком (нет смеси рус+англ).
 namespace WKSourceTranslate
 {
-    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.2")]
+    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.4")]
     public class Plugin : BaseUnityPlugin
     {
         internal static Dictionary<string, string> Map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -28,7 +30,7 @@ namespace WKSourceTranslate
             catch (Exception e) { Logger.LogError("[WKSrc] dict load failed: " + e); }
             try { new Harmony("wk.source.translate").PatchAll(); }
             catch (Exception e) { Logger.LogError("[WKSrc] patch failed: " + e); }
-            Logger.LogInfo("[WKSrc] source-translate v1.0.2 loaded, dict=" + Map.Count);
+            Logger.LogInfo("[WKSrc] source-translate v1.0.4-loc loaded, dict=" + Map.Count);
         }
 
         internal static readonly Regex CYR = new Regex("[А-Яа-яЁё]", RegexOptions.Compiled);
@@ -117,6 +119,30 @@ namespace WKSourceTranslate
             return n;
         }
 
+        // перевод строки ЛОКАЛИЗАЦИИ (Мать/объявления/смерти/торговец/записи/описания) — как T(), но
+        // {rand:..}-БЕЗОПАСНО: содержимое rand-токена МЫ переводим, потому обычный TokenSafe (требует РАВЕНСТВА
+        // токенов) тут отверг бы перевод. Проверяем лишь СТРУКТУРУ: равное число { и }, равное число {..}-групп
+        // и равное число опций (':' внутри каждой группы) — иначе ProcessText/Random.Range сломается -> отказ.
+        static readonly Regex BRACE = new Regex("\\{.*?(?:\\}|$)", RegexOptions.Compiled);
+        internal static string TLoc(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            string ru;
+            if (!Map.TryGetValue(s, out ru)) { Harvest(s); return s; }   // нет перевода -> оригинал (+ харвест для добора)
+            if (!LocSafe(s, ru)) return s;
+            return ru;
+        }
+        static bool LocSafe(string src, string dst)
+        {
+            if (Count(src, "{") != Count(dst, "{")) return false;
+            if (Count(src, "}") != Count(dst, "}")) return false;
+            var a = BRACE.Matches(src); var b = BRACE.Matches(dst);
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (Count(a[i].Value, ":") != Count(b[i].Value, ":")) return false;  // число rand-опций должно совпасть
+            return true;
+        }
+
         // ============ P1/P2: текст В ОБХОД XUAT (ОС-лейблы exact-match + процедурные накладные) ============
 
         // exact-match из словаря -> иначе попытка как накладной -> иначе оригинал
@@ -126,7 +152,104 @@ namespace WKSourceTranslate
             string ru;
             if (Map.TryGetValue(s, out ru) && TokenSafe(s, ru)) return ru;
             if (s.IndexOf("DELIVERY RECEIPT", StringComparison.Ordinal) >= 0) return ReceiptT(s);
+            Harvest(s);
             return s;
+        }
+
+        // ХАРВЕСТ: собираем АНГЛ-строки, которых НЕТ в словаре (= то, что XUAT не переведёт — новый контент The Nest).
+        // Пишем в файл рядом с DLL, дедуп. Map = тот же словарь, что у XUAT -> !Map.ContainsKey == реально непереведено.
+        static readonly HashSet<string> _harv = new HashSet<string>();
+        static readonly Regex LAT = new Regex("[A-Za-z]{2,}", RegexOptions.Compiled);
+        static string _harvFile;
+        internal static void Harvest(string s)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(s) || s.Length < 2) return;
+                if (CYR.IsMatch(s)) return;                 // уже русский/переведён
+                if (!LAT.IsMatch(s)) return;                // нет слов латиницей (числа/символы)
+                if (Map.ContainsKey(s)) return;             // уже в словаре
+                if (!_harv.Add(s)) return;                  // уже собрано
+                if (_harvFile == null)
+                {
+                    string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    _harvFile = Path.Combine(dir ?? ".", "WK_harvest_nest.txt");
+                }
+                File.AppendAllText(_harvFile, "<<<" + s.Replace("\r", "") + ">>>\n", System.Text.Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        // Легаси uGUI Text/InputField юзают UnityEngine.Font (НЕ TMP). Динамический шрифт рендерится с анти-алиасингом
+        // (мягко, не пиксельно) И Unity не видит процесс-приватные OS-шрифты. Поэтому СОБИРАЕМ свой КРИСП битмап-Font
+        // из ВШИТОГО атласа pixcyr_atlas.png (+ pixcyr.meta), отрисованного офлайн без сглаживания (порогом). Не зависит
+        // от кэша OS-шрифтов Unity, даёт настоящий 1-битный пиксель в стиле игры. (по ревью ТБ: Codex+АГ+ЧК)
+        static Font _ruFont;
+        static bool _ruTried;
+        internal static int _szLog;   // счётчик диаг-логов размера (первые N)
+
+        internal static Font RuFont()
+        {
+            if (_ruTried) return _ruFont;
+            _ruTried = true;
+            try { _ruFont = BuildBitmapFont(); }
+            catch (Exception e) { Log?.LogWarning("[WKSrc] bitmap font fail: " + e.Message); }
+            if (_ruFont == null)
+            {
+                try
+                {
+                    _ruFont = Font.CreateDynamicFontFromOSFont(new[] { "Consolas", "Tahoma", "Arial" }, 16);
+                    if (_ruFont != null) UnityEngine.Object.DontDestroyOnLoad(_ruFont);
+                    Log?.LogWarning("[WKSrc] атлас не загрузился -> динамический фолбэк (не пиксельный)");
+                }
+                catch { }
+            }
+            return _ruFont;
+        }
+
+        static Font BuildBitmapFont()
+        {
+            string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (dir == null) return null;
+            string png = Path.Combine(dir, "pixcyr_atlas.png");
+            string meta = Path.Combine(dir, "pixcyr.meta");
+            if (!File.Exists(png) || !File.Exists(meta)) return null;
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            tex.LoadImage(File.ReadAllBytes(png));
+            tex.filterMode = FilterMode.Point;          // крисп: без билинейной размывки
+            tex.wrapMode = TextureWrapMode.Clamp;
+            UnityEngine.Object.DontDestroyOnLoad(tex);
+
+            string[] lines = File.ReadAllLines(meta);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var h = lines[0].Split(' ');                // META size asc desc lineH AW AH n
+            int asc = int.Parse(h[2], inv), desc = int.Parse(h[3], inv), lineH = int.Parse(h[4], inv);
+            float AW = float.Parse(h[5], inv), AH = float.Parse(h[6], inv);
+            int n = int.Parse(h[7], inv);
+            var infos = new CharacterInfo[n];
+            for (int i = 0; i < n; i++)
+            {
+                var p = lines[i + 1].Split(' ');        // code adv x y w h
+                int code = int.Parse(p[0], inv), adv = int.Parse(p[1], inv), x = int.Parse(p[2], inv), y = int.Parse(p[3], inv), w = int.Parse(p[4], inv);
+                var ci = new CharacterInfo();
+                ci.index = code;
+                // UV: origin внизу-слева; y в атласе сверху -> флип
+                ci.uv = new Rect(x / AW, 1f - (y + lineH) / AH, w / AW, lineH / AH);
+                // vert: x=0 (беринг запечён в пиксели), y=asc (верх над базлайном), width=w, height=-lineH (вниз)
+                ci.vert = new Rect(0f, asc, w, -lineH);
+                ci.width = adv;
+                infos[i] = ci;
+            }
+            var sh = Shader.Find("GUI/Text Shader");
+            if (sh == null) sh = Shader.Find("UI/Default");
+            var mat = new Material(sh) { mainTexture = tex };
+            var font = new Font("PixCyrBitmap");
+            font.material = mat;
+            font.characterInfo = infos;
+            UnityEngine.Object.DontDestroyOnLoad(font);
+            Log?.LogInfo("[WKSrc] crisp bitmap font built: glyphs=" + n + " lineH=" + lineH + " atlas=" + (int)AW + "x" + (int)AH);
+            return font;
         }
 
         static readonly Regex RDATE = new Regex(@"^\s*\[\s*\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}\s*\]\s*$", RegexOptions.Compiled);
@@ -195,6 +318,134 @@ namespace WKSourceTranslate
                 ru = string.Join(", ", outp); return true;
             }
             ru = null; return false;
+        }
+
+        // ============ СКАН: ловит TMP-текст, который ставится МИМО .text/SetText (ОС-лейблы и пр.) ============
+        static readonly string[] HOTWORDS = { "Perks", "QuietOS", "Programs", "Upgrades", "Backup", "Untitled Disk", "Facility", "Desktop" };
+        static readonly HashSet<string> _diag = new HashSet<string>();
+
+        internal System.Collections.IEnumerator ScanLoop()
+        {
+            var wait = new WaitForSecondsRealtime(1.5f);
+            while (true) { yield return wait; try { ScanOnce(); } catch { } }
+        }
+
+        static int _scanN = 0;
+        static bool _deepFound = false;
+
+        static void ScanOnce()
+        {
+            ScanTMP();
+            ScanUIText();
+            ScanTextMesh();
+            if (!_deepFound && (_scanN % 3 == 0) && _scanN < 60) DeepDiag();  // ~раз в 4.5с, пока не найдём
+            _scanN++;
+        }
+
+        static void ScanTMP()
+        {
+            TMP_Text[] all;
+            try { all = UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None); }
+            catch { all = UnityEngine.Object.FindObjectsOfType<TMP_Text>(); }
+            for (int i = 0; i < all.Length; i++)
+            {
+                var c = all[i]; if (c == null) continue;
+                string s = c.text; if (string.IsNullOrEmpty(s)) continue;
+                string ru = TranslateAny(s);
+                if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) c.text = ru;
+                else DiagG("TMP:" + c.GetType().Name, s, c.transform);
+            }
+        }
+
+        static void ScanUIText()
+        {
+            try
+            {
+                var all = UnityEngine.Object.FindObjectsByType<UnityEngine.UI.Text>(FindObjectsSortMode.None);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var c = all[i]; if (c == null) continue;
+                    string s = c.text; if (string.IsNullOrEmpty(s)) continue;
+                    string ru = TranslateAny(s);
+                    if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) c.text = ru;
+                    else DiagG("UIText", s, c.transform);
+                }
+            }
+            catch { }
+        }
+
+        static void ScanTextMesh()
+        {
+            try
+            {
+                var all = UnityEngine.Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var c = all[i]; if (c == null) continue;
+                    string s = c.text; if (string.IsNullOrEmpty(s)) continue;
+                    string ru = TranslateAny(s);
+                    if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) c.text = ru;
+                    else DiagG("TextMesh", s, c.transform);
+                }
+            }
+            catch { }
+        }
+
+        static bool HasHot(string s)
+        {
+            for (int i = 0; i < HOTWORDS.Length; i++)
+                if (s.IndexOf(HOTWORDS[i], StringComparison.Ordinal) >= 0) return true;
+            return false;
+        }
+
+        static void DiagG(string typ, string s, Transform tr)
+        {
+            try
+            {
+                if (!HasHot(s)) return;
+                string key = typ + "|" + s;
+                if (_diag.Count < 60 && _diag.Add(key))
+                    Log?.LogWarning("[WKSrc][DIAG] " + typ + " НЕ_перевёл: <" + s.Replace("\n", "\\n").Replace("\r", "\\r")
+                        + "> словарь=" + Map.ContainsKey(s) + " путь=" + Path2(tr));
+            }
+            catch { }
+        }
+
+        // ГЛУБОКО: рефлексией ищем игровой компонент со string-полем, содержащим горячее слово -> вскрывает кастомный рендер
+        static void DeepDiag()
+        {
+            try
+            {
+                var all = UnityEngine.Object.FindObjectsByType<Component>(FindObjectsSortMode.None);
+                int n = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var c = all[i]; if (c == null) continue;
+                    Type t = c.GetType();
+                    if (t.Namespace != null && (t.Namespace.StartsWith("UnityEngine") || t.Namespace.StartsWith("TMPro"))) continue;
+                    foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (f.FieldType != typeof(string)) continue;
+                        string v = null; try { v = f.GetValue(c) as string; } catch { }
+                        if (!string.IsNullOrEmpty(v) && HasHot(v))
+                        {
+                            Log?.LogWarning("[WKSrc][DEEP] " + t.FullName + "." + f.Name + " = <" + v.Replace("\n", "\\n") + "> путь=" + Path2(c.transform));
+                            _deepFound = true;
+                            if (++n > 40) { Log?.LogWarning("[WKSrc][DEEP] (обрезано)"); return; }
+                        }
+                    }
+                }
+                if (n == 0) Log?.LogInfo("[WKSrc][DEEP] проход " + _scanN + ": горячих string-полей в игровых компонентах нет (ОС не открыта?)");
+            }
+            catch (Exception e) { Log?.LogWarning("[WKSrc][DEEP] err " + e.Message); }
+        }
+
+        static string Path2(Transform t)
+        {
+            string p = t.name;
+            t = t.parent;
+            for (int d = 0; t != null && d < 6; d++, t = t.parent) p = t.name + "/" + p;
+            return p;
         }
 
     }
@@ -328,6 +579,115 @@ namespace WKSourceTranslate
                 if (string.IsNullOrEmpty(s)) return;
                 string ru = Plugin.TranslateAny(s);
                 if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) __0 = ru;
+            }
+            catch { }
+        }
+    }
+
+    // ---- P1 (ПО РЕВЬЮ ТБ): подписи «ОС» рисует ЛЕГАСИ uGUI OS_File.nameText : UnityEngine.UI.InputField (НЕ TMP) ----
+    // Source-хук: после Initialize переводим ВИДИМУЮ подпись (nameText.text), НЕ трогая fileInfo.name (это ID файла/программы).
+    [HarmonyPatch(typeof(OS_File), "Initialize")]
+    static class OS_File_Initialize_Hook
+    {
+        static void Postfix(OS_File __instance)
+        {
+            try
+            {
+                var nt = __instance.nameText;
+                if (nt == null) return;
+                string cur = nt.text;
+                if (string.IsNullOrEmpty(cur)) return;
+                string ru = Plugin.TranslateAny(cur);
+                if (!ReferenceEquals(ru, cur) && !string.Equals(ru, cur, StringComparison.Ordinal))
+                {
+                    var tc = nt.textComponent;
+                    float origSize = (tc != null && tc.fontSize > 1) ? tc.fontSize : 14f;  // ОРИГ. кегль ДО подмены
+                    var f = Plugin.RuFont();
+                    // ТБ: InputField.UpdateLabel РЕЖЕТ текст по draw-range -> отключаем контроллер, рисуем через textComponent.
+                    nt.enabled = false;
+                    if (tc != null)
+                    {
+                        if (f != null) tc.font = f;
+                        tc.resizeTextForBestFit = false;
+                        tc.horizontalOverflow = HorizontalWrapMode.Overflow;
+                        tc.verticalOverflow = VerticalWrapMode.Overflow;
+                        tc.text = ru;
+                        // глифы рисуются НАТИВНО 32px (fontSize у non-dynamic инертен, ЧК) -> ужимаем под ориг. кегль через localScale
+                        float s = Mathf.Clamp(origSize / 32f, 0.25f, 0.7f);
+                        tc.rectTransform.localScale = new Vector3(s, s, 1f);
+                        if (Plugin._szLog++ < 8) Plugin.Log?.LogInfo("[WKSrc] osfile sz: orig=" + origSize + " pw=" + tc.preferredWidth + " s=" + s + " <" + ru + ">");
+                        try
+                        {
+                            var bp = __instance.nameTextBackplate;   // подложку — под рус-ширину (с учётом масштаба)
+                            if (bp != null) bp.sizeDelta = new Vector2(tc.preferredWidth * s + 8f, bp.sizeDelta.y);
+                            else __instance.ResetBackerWidth();
+                        }
+                        catch { }
+                    }
+                    // itemName / fileInfo.name НЕ трогаем — это ID (имя GameObject, сопоставление окон, парсинг сейвов)
+                }
+            }
+            catch (Exception e) { Plugin.Log?.LogWarning("[WKSrc] osfile: " + e.Message); }
+        }
+    }
+
+    // легаси uGUI текст (заголовки окон UI_Window_Title.titleText, имя ОС, контекст-меню и пр.) — XUAT/TMP-хук не цепляют
+    [HarmonyPatch(typeof(UnityEngine.UI.Text), "set_text")]
+    static class UIText_SetText_Hook
+    {
+        static void Prefix(UnityEngine.UI.Text __instance, ref string value)
+        {
+            try
+            {
+                string s = value;
+                if (string.IsNullOrEmpty(s)) return;
+                string ru = Plugin.TranslateAny(s);
+                if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal))
+                {
+                    value = ru;
+                    var f = Plugin.RuFont();                        // кириллический битмап-шрифт для легаси-Text (заголовки и пр.)
+                    if (f != null && __instance != null)
+                    {
+                        float origSize = (__instance.fontSize > 1) ? __instance.fontSize : 16f;
+                        __instance.font = f;
+                        __instance.resizeTextForBestFit = false;    // layout под нативный размер -> без наезда
+                        __instance.horizontalOverflow = HorizontalWrapMode.Overflow;
+                        float sc = Mathf.Clamp(origSize / 32f, 0.25f, 0.7f);  // нативно 32px -> ужать под ориг. кегль
+                        __instance.rectTransform.localScale = new Vector3(sc, sc, 1f);
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    // ХАРВЕСТ TMP-текста (XUAT-путь: заметки/меню/описания) — ТОЛЬКО сбор непереведённого, ничего не меняем
+    [HarmonyPatch(typeof(TMP_Text), "set_text")]
+    static class TMP_SetTextProp_Harvest
+    {
+        static void Postfix(TMP_Text __instance)
+        {
+            try { if (__instance != null) Plugin.Harvest(__instance.text); } catch { }
+        }
+    }
+
+    // ---- ЛОКАЛИЗАЦИЯ (по ревью ТБ Codex+АГ, Стратегия A): диалоги Матери, объявления QuietOS, экраны смерти,
+    // торговец-таракан, лор-записи, описания предметов. Весь этот текст живёт в Resources/Localization/en/*.json
+    // и резолвится CL_LocalizationManager. ЕДИНСТВЕННЫЙ чокпоинт — Localization.GetLine(group,key): возвращает
+    // англ. строку/шаблон {rand:..}. Через него проходят ВСЕ группы и ОБА пути: сырой токен {lang:group:key}
+    // (резолвится DarkMachineFunctions.ProcessText) и предрезолв прямым GetLine(..). Postfix переводит __result
+    // ДО ProcessText и Febucci-субтитров (XUAT их не ловит — анимированный побуквенный вывод). ----
+    [HarmonyPatch(typeof(CL_LocalizationManager.Localization), "GetLine", new Type[] { typeof(string), typeof(string) })]
+    static class Loc_GetLine_Hook
+    {
+        static void Postfix(ref string __result)
+        {
+            try
+            {
+                string s = __result;
+                if (string.IsNullOrEmpty(s)) return;           // пустые ("ex:Item_Floppy_T1_Notes") — насквозь
+                string ru = Plugin.TLoc(s);
+                if (!ReferenceEquals(ru, s) && !string.Equals(ru, s, StringComparison.Ordinal)) __result = ru;
             }
             catch { }
         }

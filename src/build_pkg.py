@@ -6,7 +6,7 @@ for s in (sys.stdout, sys.stderr):
 # ---------- параметры ----------
 AUTHOR = "Laimusp"
 MOD    = "WhiteKnuckleRU"
-VER    = "1.0.4"
+VER    = "1.0.5"
 SUB    = AUTHOR + "-" + MOD            # папка плагина: Laimusp-WhiteKnuckleRU
 WEB    = "https://github.com/%s/%s" % (AUTHOR, MOD)
 

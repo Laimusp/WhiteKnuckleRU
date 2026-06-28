@@ -17,7 +17,7 @@ using UnityEngine.UI;
 // и старый полный XUAT-ключ доперекрывает собранную англ-строку целиком (нет смеси рус+англ).
 namespace WKSourceTranslate
 {
-    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.4")]
+    [BepInPlugin("wk.source.translate", "WK Source Translate", "1.0.5")]
     public class Plugin : BaseUnityPlugin
     {
         internal static Dictionary<string, string> Map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -30,7 +30,7 @@ namespace WKSourceTranslate
             catch (Exception e) { Logger.LogError("[WKSrc] dict load failed: " + e); }
             try { new Harmony("wk.source.translate").PatchAll(); }
             catch (Exception e) { Logger.LogError("[WKSrc] patch failed: " + e); }
-            Logger.LogInfo("[WKSrc] source-translate v1.0.4-loc loaded, dict=" + Map.Count);
+            Logger.LogInfo("[WKSrc] source-translate v1.0.5-loc loaded, dict=" + Map.Count);
         }
 
         internal static readonly Regex CYR = new Regex("[А-Яа-яЁё]", RegexOptions.Compiled);

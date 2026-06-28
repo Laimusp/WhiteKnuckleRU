@@ -6257,3 +6257,6 @@ You are being hunted.=За тобой охотятся.
 {count} / {goal} batteries inserted.={count} / {goal} батарей вставлено.
 {count} / {goal} disks inserted.={count} / {goal} дисков вставлено.
 {rand:The way out is in front of me Child.:Child.. the path is before me, not above.}={rand:Выход передо мной, Дитя.:Дитя.. путь передо мной, не наверху.}
+<color\=#FF8AFF>Trinket: Chalk. -20% Stamina Drain\n<color\="grey">It's a good thing you managed to hold onto this.=<color\=#FF8AFF>Тринкет: Магнезия. -20% к расходу выносливости\n<color\="grey">Хорошо, что ты сумел её удержать.
+<color\=white>Item: Cryogun\n<color\="grey">Experimental handhold-creation tool. Can be refilled at cryo stations.=<color\=white>Предмет: Криопушка\n<color\="grey">Экспериментальный инструмент для создания зацепов. Пополняется на криостанциях.
+<color\=white>Lambda Artifact: Barnacle Hook\n<color\="grey">A young barnacle turned tool. Needs to be fed to regenerate stamina.=<color\=white>Артефакт Лямбда: Крюк «Усоног»\n<color\="grey">Юный усоног, ставший инструментом. Нужно кормить, чтобы восстанавливать выносливость.
